@@ -25,11 +25,21 @@ BasicGame.Game.prototype = {
     this.player.speed = 300;  // sets the player movement speed
     this.player.body.collideWorldBounds = true; // player can't move off screen
 
-    this.enemy = this.add.sprite(400, 200, "greenEnemy");
-    this.enemy.animations.add("fly", [0, 1, 2], 20, true);
-    this.enemy.play("fly");
-    this.enemy.anchor.setTo(0.5, 0.5);  // centers the enemy sprite
-    this.physics.enable(this.enemy, Phaser.Physics.ARCADE);
+    this.enemyPool = this.add.group();  // create an empty sprite group
+    this.enemyPool.enableBody = true;   // enable physics on all entities in the group
+    this.enemyPool.physicsBodyType = Phaser.Physics.ARCADE;
+    this.enemyPool.createMultiple(50, "greenEnemy");  // create 50 enemies in the pool
+    this.enemyPool.setAll("anchor.x", 0.5); // set the centre of each enemy sprite
+    this.enemyPool.setAll("anchor.y", 0.5);
+    this.enemyPool.setAll("outOfBoundsKill", true);   // destroy enemy when off screen
+    this.enemyPool.setAll("checkWorldBounds", true);
+
+    this.enemyPool.forEach(function(enemy) {    // animates all the enemy planes
+      enemy.animations.add("fly", [0, 1, 2], 20, true);
+    });
+
+    this.nextEnemyAt = 0;   // times when new enemies appear on the screen
+    this.enemyDelay = 1000;
 
     this.bulletPool = this.add.group(); // create an empty sprite group
     this.bulletPool.enableBody = true;  // enable physics on the whole group
@@ -58,8 +68,16 @@ BasicGame.Game.prototype = {
     this.sea.tilePosition.y += 0.5; // slowly scrolls the background up
 
     this.physics.arcade.overlap(
-      this.bulletPool, this.enemy, this.enemyHit, null, this
+      this.bulletPool, this.enemyPool, this.enemyHit, null, this
     );                            // bullet/enemy collision detection
+
+    if (this.nextEnemyAt < this.time.now && this.enemyPool.countDead() >0) {
+      this.nextEnemyAt = this.time.now + this.enemyDelay;
+      var enemy = this.enemyPool.getFirstExists(false);
+      enemy.reset(this.rnd.integerInRange(20, 780), 0); // Randomize spawn across top of screen
+      enemy.body.velocity.y = this.rnd.integerInRange(30, 60); // Randomize enemy speed
+      enemy.play("fly");  // plays enemy animation
+    }
 
     this.player.body.velocity.x = 0;  // Player doesn't move unless key pressed
     this.player.body.velocity.y = 0;  // Player doesn't move unless key pressed
