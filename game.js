@@ -20,6 +20,7 @@ BasicGame.Game.prototype = {
     this.setupEnemies();
     this.setupBullets();
     this.setupExplosions();
+    this.setupPlayerIcons();
     this.setupText();
 
     this.cursors = this.input.keyboard.createCursorKeys();  // looks for cursor key presses
@@ -43,6 +44,7 @@ BasicGame.Game.prototype = {
         this.rnd.integerInRange(20, this.game.width - 20), 0,
         BasicGame.ENEMY_HEALTH
       ); // Randomize spawn across top of screen
+
       enemy.body.velocity.y = this.rnd.integerInRange(
         BasicGame.ENEMY_MIN_Y_VELOCITY, BasicGame.ENEMY_MAX_Y_VELOCITY
       );                                                    // Randomize enemy speed
@@ -73,7 +75,11 @@ BasicGame.Game.prototype = {
 
     if (this.input.keyboard.isDown(Phaser.Keyboard.Z) ||
         this.input.activePointer.isDown) {
-      this.fire();
+      if (this.returnText && this.returnText.exists) {
+        this.quitGame();
+      } else {
+        this.fire();
+      }
     }                               // Press z or touchpad to fire
   },
 
@@ -81,6 +87,20 @@ BasicGame.Game.prototype = {
     if (this.instructions.exists && this.time.now > this.instExpire) {
       this.instructions.destroy();
     }                               // destroys instructions after they disappear
+
+    if (this.ghostUntil && this.ghostUntil < this.time.now) {
+      this.ghostUntil = null;
+      this.player.play("fly");
+    }
+
+    if (this.showReturn && this.time.now > this.showReturn) {
+      this.returnText = this.add.text(this.game.width / 2, this.game.height / 2 + 20,
+        "Press Z or tap Game to go back to the Main menu",
+        {font: "16px sans-serif", fill: "#fff"}
+      );
+      this.returnText.anchor.setTo(0.5, 0.5);
+      this.showReturn = false;
+    }
   },
 
   update: function () {
@@ -102,6 +122,7 @@ BasicGame.Game.prototype = {
     this.player = this.add.sprite(this.game.width / 2, this.game.height - 50, "player");
     this.player.anchor.setTo(0.5, 0.5); // centers the player sprite
     this.player.animations.add("fly", [0, 1, 2], 20, true);
+    this.player.animations.add("ghost", [3, 0, 3, 1], 20, true);
     this.player.play("fly");  // animates the player
 
     this.physics.enable(this.player, Phaser.Physics.ARCADE);
@@ -169,6 +190,17 @@ BasicGame.Game.prototype = {
     });
   },
 
+  setupPlayerIcons: function() {
+    this.lives = this.add.group();
+
+    var firstLifeIconX = this.game.width - 10 - (BasicGame.PLAYER_EXTRA_LIVES * 30);  // sets location on top of the spare lives
+    for (var i = 0; i < BasicGame.PLAYER_EXTRA_LIVES; i += 1) {
+      var life = this.lives.create(firstLifeIconX + (30 * i), 30, "player");  // spaces each life out
+      life.scale.setTo(0.5, 0.5);                   // sets the size of the icon
+      life.anchor.setTo(0.5, 0.5);                  // anchors to the centre of the icon
+    }
+  },
+
   setupText: function() {
     this.instructions = this.add.text( this.game.width / 2, this.game.height - 100,
       'Use arrow keys to move, Press z to fire\n' +
@@ -209,9 +241,21 @@ BasicGame.Game.prototype = {
   },
 
   playerHit: function (player, enemy) {
+    if (this.ghostUntil && this.ghostUntil > this.time.now) {
+      return;
+    }
     this.damageEnemy(enemy, BasicGame.CRASH_DAMAGE); // sets damage player does to enemy on collision
-    this.explode(player);
-    player.kill();                          // removes player when dead
+
+    var life = this.lives.getFirstAlive();
+    if (life !== null) {
+      life.kill();
+      this.ghostUntil = this.time.now + BasicGame.PLAYER_GHOST_TIME;
+      this.player.play("ghost");
+    } else {
+      this.explode(player);
+      player.kill();
+      this.displayEnd(false);
+    }
   },
 
   damageEnemy: function(enemy, damage) {
@@ -227,6 +271,10 @@ BasicGame.Game.prototype = {
   addToScore: function(score) {
     this.score += score;
     this.scoreText.text = this.score;
+    if (this.score >= 2000) {
+      this.enemyPool.destroy();
+      this.displayEnd(true);
+    }
   },
 
   explode: function(sprite) {
@@ -240,13 +288,34 @@ BasicGame.Game.prototype = {
     explosion.body.velocity.y = sprite.body.velocity.y;
   },
 
+  displayEnd: function(win) {
+    if (this.endText && this.endText.exists) {          // can either win or lose, not both
+      return;
+    }
+
+    var msg = win ? "You Win!!" : "Game Over";
+    this.endText = this.add.text(this.game.width / 2, this.game.height / 2 - 60, msg,
+      {font: "72px serif", fill: "#FFF"}
+    );
+    this.endText.anchor.setTo(0.5, 0);
+
+    this.showReturn = this.time.now + BasicGame.RETURN_MESSAGE_DELAY;
+  },
+
   quitGame: function (pointer) {
 
-    //  Here you should destroy anything you no longer need.
-    //  Stop music, delete sprites, purge caches, free resources, all that good stuff.
+    // destroy anything no longer required
+    this.sea.destroy();
+    this.player.destroy();
+    this.enemyPool.destroy();
+    this.bulletPool.destroy();
+    this.explosionPool.destroy();
+    this.instructions.destroy();
+    this.scoreText.destroy();
+    this.endText.destroy();
+    this.returnText.destroy();
 
-    //  Then let's go back to the main menu.
-    this.state.start('MainMenu');
+    this.state.start('MainMenu'); // go back to the main menu
 
   }
 
