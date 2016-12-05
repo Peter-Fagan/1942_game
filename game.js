@@ -9,7 +9,7 @@ BasicGame.Game.prototype = {
     this.load.image("sea", "assets/sea.png");
     this.load.image("bullet", "assets/bullet.png");
     this.load.spritesheet("greenEnemy", "assets/enemy.png", 32, 32);
-    this.load.spritesheet("explosion", "assets/explosion", 32, 32);
+    this.load.spritesheet("explosion", "assets/explosion.png", 32, 32);
     this.load.spritesheet("player", "assets/player.png", 64, 64);
   },
 
@@ -24,6 +24,7 @@ BasicGame.Game.prototype = {
     this.physics.enable(this.player, Phaser.Physics.ARCADE);
     this.player.speed = 300;  // sets the player movement speed
     this.player.body.collideWorldBounds = true; // player can't move off screen
+    this.player.body.setSize(20, 20, 0, -5);  // changes player hitbox size and location
 
     this.enemyPool = this.add.group();  // create an empty sprite group
     this.enemyPool.enableBody = true;   // enable physics on all entities in the group
@@ -71,6 +72,10 @@ BasicGame.Game.prototype = {
       this.bulletPool, this.enemyPool, this.enemyHit, null, this
     );                            // bullet/enemy collision detection
 
+    this.physics.arcade.overlap(
+      this.player, this.enemyPool, this.playerHit, null, this
+    );                            // player/enemy collision detection
+
     if (this.nextEnemyAt < this.time.now && this.enemyPool.countDead() >0) {
       this.nextEnemyAt = this.time.now + this.enemyDelay;
       var enemy = this.enemyPool.getFirstExists(false);
@@ -116,8 +121,8 @@ BasicGame.Game.prototype = {
 
   fire: function() {
 
-    if (this.nextShotAt > this.time.now) {  // check delay until next shot
-      return;
+    if (!this.player.alive || this.nextShotAt > this.time.now) {
+      return;                         // check player is still alive and delay until next shot
     }
 
     if (this.bulletPool.countDead() === 0) {  // check if there are bullets in the pool
@@ -139,6 +144,15 @@ BasicGame.Game.prototype = {
     explosion.anchor.setTo(0.5, 0.5);   // centers the explosion sprite
     explosion.animations.add("boom");
     explosion.play("boom", 15, false, true);  // plays explosion at enemy location
+  },
+
+  playerHit: function (player, enemy) {
+    enemy.kill();                           // removes enemy player collided with
+    var explosion = this.add.sprite(player.x, player.y, "explosion");
+    explosion.anchor.setTo(0.5, 0.5);   // centers the explosion sprite
+    explosion.animations.add("boom");
+    explosion.play("boom", 15, false, true);
+    player.kill();                        // removes player
   },
 
   quitGame: function (pointer) {
