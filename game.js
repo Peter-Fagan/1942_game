@@ -39,7 +39,10 @@ BasicGame.Game.prototype = {
     if (this.nextEnemyAt < this.time.now && this.enemyPool.countDead() >0) {
       this.nextEnemyAt = this.time.now + this.enemyDelay;
       var enemy = this.enemyPool.getFirstExists(false);
-      enemy.reset(this.rnd.integerInRange(20, this.game.width - 20), 0); // Randomize spawn across top of screen
+      enemy.reset(
+        this.rnd.integerInRange(20, this.game.width - 20), 0,
+        BasicGame.ENEMY_HEALTH
+      ); // Randomize spawn across top of screen
       enemy.body.velocity.y = this.rnd.integerInRange(
         BasicGame.ENEMY_MIN_Y_VELOCITY, BasicGame.ENEMY_MAX_Y_VELOCITY
       );                                                    // Randomize enemy speed
@@ -100,7 +103,9 @@ BasicGame.Game.prototype = {
     this.player.anchor.setTo(0.5, 0.5); // centers the player sprite
     this.player.animations.add("fly", [0, 1, 2], 20, true);
     this.player.play("fly");  // animates the player
+
     this.physics.enable(this.player, Phaser.Physics.ARCADE);
+
     this.player.speed = BasicGame.PLAYER_SPEED;  // sets the player movement speed
     this.player.body.collideWorldBounds = true; // player can't move off screen
     this.player.body.setSize(20, 20, 0, -5);  // changes player hitbox size and location
@@ -109,15 +114,23 @@ BasicGame.Game.prototype = {
   setupEnemies: function() {
     this.enemyPool = this.add.group();  // create an empty sprite group
     this.enemyPool.enableBody = true;   // enable physics on all entities in the group
+
     this.enemyPool.physicsBodyType = Phaser.Physics.ARCADE;
+
     this.enemyPool.createMultiple(50, "greenEnemy");  // create 50 enemies in the pool
+
     this.enemyPool.setAll("anchor.x", 0.5); // set the centre of each enemy sprite
     this.enemyPool.setAll("anchor.y", 0.5);
     this.enemyPool.setAll("outOfBoundsKill", true);   // destroy enemy when off screen
     this.enemyPool.setAll("checkWorldBounds", true);
+    this.enemyPool.setAll("reward", BasicGame.ENEMY_REWARD, false, false, 0, true);
 
     this.enemyPool.forEach(function(enemy) {    // animates all the enemy planes
       enemy.animations.add("fly", [0, 1, 2], 20, true);
+      enemy.animations.add("hit", [3, 1, 3, 2], 20, false);
+      enemy.events.onAnimationComplete.add(function(e) {
+        e.play("fly");
+      }, this);
     });
 
     this.nextEnemyAt = 0;   // times when new enemies appear on the screen
@@ -127,8 +140,11 @@ BasicGame.Game.prototype = {
   setupBullets: function() {
     this.bulletPool = this.add.group(); // create an empty sprite group
     this.bulletPool.enableBody = true;  // enable physics on the whole group
+
     this.bulletPool.physicsBodyType = Phaser.Physics.ARCADE;
+
     this.bulletPool.createMultiple(100, "bullet");  // create 100 bullets in the pool
+
     this.bulletPool.setAll("anchor.x", 0.5);  // set the centrepoint on all bullets in pool
     this.bulletPool.setAll("anchor.y", 0.5);
     this.bulletPool.setAll("outOfBoundsKill", true); // destroy bullets outside the world bounds
@@ -141,8 +157,11 @@ BasicGame.Game.prototype = {
   setupExplosions: function() {
     this.explosionPool = this.add.group();
     this.explosionPool.enableBody = true;
+
     this.explosionPool.physicsBodyType = Phaser.Physics.ARCADE;
+
     this.explosionPool.createMultiple(50, "explosion");
+
     this.explosionPool.setAll("anchor.x", 0.5);
     this.explosionPool.setAll("anchor.y", 0.5);
     this.explosionPool.forEach(function(explosion) {
@@ -158,6 +177,12 @@ BasicGame.Game.prototype = {
     );
     this.instructions.anchor.setTo(0.5, 0.5);
     this.instExpire = this.time.now + BasicGame.INSTRUCTION_EXPIRE;  // puts instructions on screen for 10 seconds
+
+    this.score = 0;
+    this.scoreText = this.add.text( this.game.width / 2, 30, '' + this.score,
+      { font: "20px monospace", fill: "#fff", align: "center" }
+    );
+    this.scoreText.anchor.setTo(0.5, 0.5);
   },
 
   fire: function() {
@@ -180,15 +205,28 @@ BasicGame.Game.prototype = {
 
   enemyHit: function (bullet, enemy) {
     bullet.kill();                            // removes bullet on collision
-    this.explode(enemy);
-    enemy.kill();                             // removes enemy on collision
+    this.damageEnemy(enemy, BasicGame.BULLET_DAMAGE);
   },
 
   playerHit: function (player, enemy) {
-    this.explode(enemy);
-    enemy.kill();                           // removes enemy player collided with
+    this.damageEnemy(enemy, BasicGame.CRASH_DAMAGE); // sets damage player does to enemy on collision
     this.explode(player);
-    player.kill();                          // removes player
+    player.kill();                          // removes player when dead
+  },
+
+  damageEnemy: function(enemy, damage) {
+    enemy.damage(damage);
+    if (enemy.alive) {
+      enemy.play("hit");
+    } else {
+      this.explode(enemy);
+      this.addToScore(enemy.reward);
+    }
+  },
+
+  addToScore: function(score) {
+    this.score += score;
+    this.scoreText.text = this.score;
   },
 
   explode: function(sprite) {
