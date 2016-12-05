@@ -31,7 +31,13 @@ BasicGame.Game.prototype = {
     this.enemy.anchor.setTo(0.5, 0.5);
     this.physics.enable(this.enemy, Phaser.Physics.ARCADE);
 
-    this.bullets = [];
+    this.bulletPool = this.add.group(); // create an empty sprite group
+    this.bulletPool.enableBody = true;  // enable physics on the whole group
+    this.bulletPool.physicsBodyType = Phaser.Physics.ARCADE;
+    this.bulletPool.createMultiple(100, "bullet");  // create 100 bullets in the pool
+    this.bulletPool.setAll("anchor.x", 0.5);  // set the centrepoint on all bullets in pool
+    this.bulletPool.setAll("anchor.y", 0.5);
+
     this.nextShotAt = 0;
     this.shotDelay = 100;
 
