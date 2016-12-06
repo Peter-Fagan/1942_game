@@ -9,6 +9,7 @@ BasicGame.Game.prototype = {
     this.load.image("sea", "assets/sea.png");
     this.load.image("bullet", "assets/bullet.png");
     this.load.image("enemyBullet", "assets/enemy-bullet.png");
+    this.load.image("powerup1", "assets/powerup1.png");
     this.load.spritesheet("greenEnemy", "assets/enemy.png", 32, 32);
     this.load.spritesheet("whiteEnemy", "assets/shooting-enemy.png", 32, 32);
     this.load.spritesheet("explosion", "assets/explosion.png", 32, 32);
@@ -58,7 +59,10 @@ BasicGame.Game.prototype = {
 
     this.physics.arcade.overlap(
       this.player, this.enemyBulletPool, this.playerHit, null, this
-    );                                                      // player/enemy bullet collision detection
+    );                                                      // player/bullet collision detection
+    this.physics.arcade.overlap(
+      this.player, this.powerUpPool, this.playerPowerUp, null, this
+    );                                                      // player/powerup collision detection
   },
 
   spawnEnemies: function() {
@@ -176,9 +180,10 @@ BasicGame.Game.prototype = {
 
     this.physics.enable(this.player, Phaser.Physics.ARCADE);
 
-    this.player.speed = BasicGame.PLAYER_SPEED;  // sets the player movement speed
+    this.player.speed = BasicGame.PLAYER_SPEED; // sets the player movement speed
     this.player.body.collideWorldBounds = true; // player can't move off screen
-    this.player.body.setSize(20, 20, 0, -5);  // changes player hitbox size and location
+    this.player.body.setSize(20, 20, 0, -5);    // changes player hitbox size and location
+    this.weaponLevel = 0;                       // sets the starting weaponlevel
   },
 
   setupEnemies: function() {
@@ -191,7 +196,8 @@ BasicGame.Game.prototype = {
     this.enemyPool.setAll("anchor.y", 0.5);
     this.enemyPool.setAll("outOfBoundsKill", true);   // destroy enemy when off screen
     this.enemyPool.setAll("checkWorldBounds", true);
-    this.enemyPool.setAll("reward", BasicGame.ENEMY_REWARD, false, false, 0, true);
+    this.enemyPool.setAll("reward", BasicGame.ENEMY_REWARD, false, false, 0, true); // this allows the reward to be added to even though the enemy has been destroyed
+    this.enemyPool.setAll("dropRate", BasicGame.ENEMY_DROP_RATE, false, false, 0 , true);
 
     this.enemyPool.forEach(function(enemy) {          // animates all the enemy planes
       enemy.animations.add("fly", [0, 1, 2], 20, true);
@@ -214,6 +220,7 @@ BasicGame.Game.prototype = {
     this.shooterPool.setAll("outOfBoundsKill", true);   // destroys enemy when offscreen
     this.shooterPool.setAll("checkWorldBounds", true);
     this.shooterPool.setAll("reward", BasicGame.SHOOTER_REWARD, false, false, 0, true);
+    this.shooterPool.setAll("dropRate", BasicGame.SHOOTER_DROP_RATE, false, false, 0, true);
 
     this.shooterPool.forEach(function(enemy) {          // animates the shooter
       enemy.animations.add("fly", [0, 1, 2], 20, true);
@@ -267,6 +274,17 @@ BasicGame.Game.prototype = {
   },
 
   setupPlayerIcons: function() {
+    this.powerUpPool = this.add.group();
+    this.powerUpPool.enableBody = true;
+    this.powerUpPool.physicsBodyType = Phaser.Physics.ARCADE;
+    this.powerUpPool.createMultiple(5, "powerup1");
+
+    this.powerUpPool.setAll("anchor.x", 0.5);
+    this.powerUpPool.setAll("anchor.y", 0.5);
+    this.powerUpPool.setAll("outOfBoundsKill", true);
+    this.powerUpPool.setAll("checkWorldBounds", true);
+    this.powerUpPool.setAll("reward", BasicGame.POWERUP_REWARD, false, false, 0, true);
+
     this.lives = this.add.group();
 
     var firstLifeIconX = this.game.width - 10 - (BasicGame.PLAYER_EXTRA_LIVES * 30);  // sets location on top of the spare lives
@@ -299,16 +317,33 @@ BasicGame.Game.prototype = {
       return;                         // check player is still alive and delay until next shot
     }
 
-    if (this.bulletPool.countDead() === 0) {  // check if there are bullets in the pool
-      return;
-    }
-
     this.nextShotAt = this.time.now + this.shotDelay;
 
-    var bullet = this.bulletPool.getFirstExists(false);   // get the first "dead" bullet in the pool
-    bullet.reset(this.player.x, this.player.y - 20);      // resets the sprite
-    bullet.body.velocity.y = -BasicGame.BULLET_VELOCITY;  // sets the bullets speed
-
+    var bullet;
+    if (this.weaponLevel === 0) {
+      if (this.bulletPool.countDead() === 0) {
+        return;
+      }
+      bullet = this.bulletPool.getFirstExists(false);
+      bullet.reset(this.player.x, this.player.y - 20);
+      bullet.body.velocity.y = -BasicGame.BULLET_VELOCITY;
+    } else {
+      if (this.bulletPool.countDead() < this.weaponLevel * 2) {
+        return;
+      }
+      for (var i = 0; i < this.weaponLevel; i += 1) {
+        bullet = this.bulletPool.getFirstExists(false);
+        bullet.reset(this.player.x - (10 + i * 6), this.player.y - 20); // Spawn bullets left of centre
+        this.physics.arcade.velocityFromAngle(
+          -95 - i * 10, BasicGame.BULLET_VELOCITY, bullet.body.velocity
+        );
+        bullet = this.bulletPool.getFirstExists(false);
+        bullet.reset(this.player.x + (10 + i * 6), this.player.y - 20); // Spawn bullets right of centre
+        this.physics.arcade.velocityFromAngle(
+          -85 + i * 10, BasicGame.BULLET_VELOCITY, bullet.body.velocity
+        );
+      }
+    }
   },
 
   enemyHit: function (bullet, enemy) {
@@ -317,7 +352,7 @@ BasicGame.Game.prototype = {
   },
 
   playerHit: function (player, enemy) {
-    if (this.ghostUntil && this.ghostUntil > this.time.now) {
+    if (this.ghostUntil && this.ghostUntil > this.time.now) { // checks if the player is still a ghost
       return;
     }
     this.damageEnemy(enemy, BasicGame.CRASH_DAMAGE); // sets damage player does to enemy on collision
@@ -325,6 +360,7 @@ BasicGame.Game.prototype = {
     var life = this.lives.getFirstAlive();
     if (life !== null) {
       life.kill();
+      this.weaponLevel = 0;
       this.ghostUntil = this.time.now + BasicGame.PLAYER_GHOST_TIME;
       this.player.play("ghost");
     } else {
@@ -340,6 +376,7 @@ BasicGame.Game.prototype = {
       enemy.play("hit");
     } else {
       this.explode(enemy);
+      this.spawnPowerUp(enemy);
       this.addToScore(enemy.reward);
     }
   },
@@ -347,7 +384,7 @@ BasicGame.Game.prototype = {
   addToScore: function(score) {
     this.score += score;
     this.scoreText.text = this.score;
-    if (this.score >= 2000) {
+    if (this.score >= 20000) {
       this.enemyPool.destroy();
       this.shooterPool.destroy();
       this.enemyBulletPool.destroy();
@@ -364,6 +401,25 @@ BasicGame.Game.prototype = {
     explosion.play("boom", 15, false, true);
     explosion.body.velocity.x = sprite.body.velocity.x;
     explosion.body.velocity.y = sprite.body.velocity.y;
+  },
+
+  spawnPowerUp: function(enemy) {
+    if (this.powerUpPool.countDead() === 0 || this.weaponLevel === 5) { // Checks if the pool is empty or the weapon is fully powered
+      return;
+    }
+    if (this.rnd.frac() < enemy.dropRate) {
+      var powerUp = this.powerUpPool.getFirstExists(false);
+      powerUp.reset(enemy.x, enemy.y);
+      powerUp.body.velocity.y = BasicGame.POWERUP_VELOCITY;
+    }
+  },
+
+  playerPowerUp: function(player, powerUp) {
+    this.addToScore(powerUp.reward);
+    powerUp.kill();
+    if (this.weaponLevel < 5) {
+      this.weaponLevel += 1;
+    }
   },
 
   displayEnd: function(win) {
